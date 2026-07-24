@@ -6,7 +6,7 @@
 forensic evidence a security program needs. It provisions short-lived agent
 identities, baselines and monitors behavior, detects threats and data exfiltration,
 verifies memory integrity, and keeps an append-only audit trail — with a guardian
-agent that can observe, notify, or act.
+agent that can act at an advisory, semi-autonomous, or fully-autonomous level.
 
 ## Components
 
@@ -16,7 +16,7 @@ agent that can observe, notify, or act.
 | **Behavioral monitor** | Baselines agent behavior and flags anomalies (z-score) |
 | **Threat detection** | Detects risky commands / patterns in agent actions |
 | **Memory integrity** | Verifies memory writes; quarantines/rejects anomalous ones |
-| **Guardian agent** | Observes → notifies → acts, per configured autonomy |
+| **Guardian agent** | Acts per configured autonomy: advisory, semi-autonomous, or fully-autonomous |
 | **Coordination scorer** | Scores multi-agent coordination for isolation/review thresholds |
 | **Audit** | Append-only forensic audit trail with configurable retention |
 
@@ -37,7 +37,9 @@ Everything is env-driven — see [`.env.example`](.env.example). Key settings:
 - **`RUNTIME_SECURITY_JWT_SECRET`** — required; signs the API's JWTs.
 - **`OUTBOUND_HOST_ALLOWLIST`** — comma-separated hosts guarded agents may reach.
   **Set this to your own allowed hosts.**
-- **`GUARDIAN_AUTONOMY`** — `observe` | `notify` | `act`.
+- **`GUARDIAN_AUTONOMY`** — `advisory` (log only; operator review required — the
+  default) | `semi_autonomous` (auto throttle/warn, but suspend/terminate need an
+  operator) | `fully_autonomous` (all actions automated; operator notified).
 - **`QDRANT_URL`** — for the memory-integrity checks.
 - Detection thresholds (z-scores, sigmas, TTLs) are all tunable via env.
 
