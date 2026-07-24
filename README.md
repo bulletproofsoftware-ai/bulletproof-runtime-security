@@ -2,6 +2,8 @@
 
 **Runtime security and SOC2-style evidence for AI agents: identity, behavior, threats, and memory integrity.**
 
+![bulletproof-runtime-security — overview](docs/media/infographic.png)
+
 `bulletproof-runtime-security` watches AI agents at runtime and produces the
 forensic evidence a security program needs. It provisions short-lived agent
 identities, baselines and monitors behavior, detects threats and data exfiltration,
@@ -49,6 +51,22 @@ Everything is env-driven — see [`.env.example`](.env.example). Key settings:
 pip install -r requirements.txt
 python -m pytest
 ```
+
+## Documentation
+
+- [Overview](docs/OVERVIEW.md) — components, data flow, autonomy levels
+- [Install](docs/INSTALL.md) — run from source or Docker
+- [How to use](docs/HOW-TO-USE.md) — full API reference
+- [Administrator guide](docs/ADMINISTRATOR.md) — configuration, thresholds, operations
+- [SBOM](docs/SBOM.md) — software bill of materials ([CycloneDX](docs/bulletproof-runtime-security.cyclonedx.json))
+- [Security scan report](docs/scan/scan-report.md) — Code Hardener scan (score 933, 0 critical / 0 high)
+
+## Media
+
+A NotebookLM-generated overview lives in [`media/`](media/): a narrated
+[explainer video](media/system-overview.mp4) and a
+[briefing document](media/system-overview.md). The overview infographic is
+[`docs/media/infographic.png`](docs/media/infographic.png) (shown above).
 
 ## License
 
