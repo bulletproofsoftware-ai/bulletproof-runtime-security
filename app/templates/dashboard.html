@@ -150,7 +150,8 @@ async function refresh() {
 refresh();
 setInterval(refresh, REFRESH_MS);
 
-const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/security/ws');
+const wsScheme = location.protocol.replace('http', 'ws');  // https->wss, http->ws
+const ws = new WebSocket(wsScheme + '//' + location.host + '/api/security/ws');
 ws.onmessage = () => refresh();
 ws.onclose = () => setTimeout(() => location.reload(), 5000);
 </script>
