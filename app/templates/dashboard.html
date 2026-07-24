@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Runtime Security — PRD 11</title>
+    <style>
+        :root {
+            --bg: #0f1117; --surface: #1a1d27; --surface-2: #232634; --border: #2a2e3d;
+            --text: #e5e7eb; --muted: #9ca3af; --accent: #60a5fa;
+            --ok: #4ade80; --warn: #fbbf24; --err: #f87171; --crit: #dc2626;
+        }
+        * { box-sizing: border-box; }
+        body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; margin: 0; padding: 24px; }
+        h1 { color: var(--accent); margin: 0 0 4px; font-size: 20px; }
+        .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+        .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .card .value { font-size: 28px; font-weight: 600; margin-top: 4px; }
+        .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); } .crit { color: var(--crit); }
+        table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 8px; overflow: hidden; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+        th { background: var(--surface-2); color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; }
+        tr:last-child td { border-bottom: none; }
+        .pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+        .pill.crit { background: #7f1d1d; color: #fee2e2; }
+        .pill.high { background: #92400e; color: #fef3c7; }
+        .pill.warn { background: #78350f; color: #fef3c7; }
+        .pill.info { background: #1e3a8a; color: #dbeafe; }
+        .section-title { color: var(--accent); font-size: 14px; text-transform: uppercase; margin: 24px 0 12px; }
+        code { background: var(--surface-2); padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+        .auto-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; background: var(--surface-2); color: var(--muted); font-size: 11px; }
+    </style>
+</head>
+<body>
+    <h1>Runtime Security &amp; Identity</h1>
+    <div class="sub">PRD 11 — 6 components · behavioral monitoring · identity lifecycle · memory integrity · coordination · threat detection · guardian
+        <span class="auto-tag" id="autonomy-tag">autonomy: ?</span>
+        · <span id="last-updated">Last updated: —</span>
+    </div>
+
+    <div class="grid">
+        <div class="card"><div class="label">Active sessions</div><div class="value" id="m-sessions">—</div></div>
+        <div class="card"><div class="label">Threats 24h</div><div class="value err" id="m-threats">—</div></div>
+        <div class="card"><div class="label">Quarantine backlog</div><div class="value warn" id="m-quarantine">—</div></div>
+        <div class="card"><div class="label">Guardian actions 24h</div><div class="value" id="m-guardian">—</div></div>
+    </div>
+
+    <div class="section-title">Active sessions (top 25)</div>
+    <table>
+        <thead><tr><th>Agent</th><th>Class</th><th>State</th><th>Risk</th><th>Issued</th><th>Expires</th><th>Last activity</th></tr></thead>
+        <tbody id="sess-tbody"><tr><td colspan="7">Loading…</td></tr></tbody>
+    </table>
+
+    <div class="section-title">Recent threats (last 24h)</div>
+    <table>
+        <thead><tr><th>Severity</th><th>Type</th><th>Agent</th><th>Recommended</th><th>When</th></tr></thead>
+        <tbody id="threat-tbody"><tr><td colspan="5">Loading…</td></tr></tbody>
+    </table>
+
+    <div class="section-title">Memory quarantine — pending operator review</div>
+    <table>
+        <thead><tr><th>Write ID</th><th>Agent</th><th>Aggregate</th><th>Anomaly σ</th><th>When</th></tr></thead>
+        <tbody id="qm-tbody"><tr><td colspan="5">Loading…</td></tr></tbody>
+    </table>
+
+    <div class="section-title">Guardian action history</div>
+    <table>
+        <thead><tr><th>Agent</th><th>Action</th><th>Autonomy</th><th>Reason</th><th>Notify (s)</th><th>When</th></tr></thead>
+        <tbody id="guard-tbody"><tr><td colspan="6">Loading…</td></tr></tbody>
+    </table>
+
+<script>
+const $ = id => document.getElementById(id);
+const REFRESH_MS = 30000;
+
+function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+function row(cells) {
+    const tr = document.createElement('tr');
+    cells.forEach(c => {
+        const td = document.createElement('td');
+        if (c instanceof Node) td.appendChild(c);
+        else td.textContent = String(c == null ? '' : c);
+        tr.appendChild(td);
+    });
+    return tr;
+}
+function pill(severity) {
+    const span = document.createElement('span');
+    span.className = 'pill ' + (
+        severity === 'critical' ? 'crit' :
+        severity === 'high' ? 'high' :
+        severity === 'warning' || severity === 'warn' ? 'warn' :
+        'info'
+    );
+    span.textContent = severity || '—';
+    return span;
+}
+function colspanRow(text, cols) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = cols; td.textContent = text;
+    tr.appendChild(td); return tr;
+}
+function fmtJson(v) {
+    if (v == null) return '';
+    try { return typeof v === 'string' ? v.slice(0, 80) : JSON.stringify(v).slice(0, 80); }
+    catch (e) { return String(v).slice(0, 80); }
+}
+
+async function refresh() {
+    try {
+        const data = await fetch('/api/security/dashboard').then(r => r.json());
+        $('autonomy-tag').textContent = 'autonomy: ' + (data.autonomy_level || 'advisory');
+        $('m-sessions').textContent = data.active_sessions;
+        $('m-threats').textContent = (data.recent_threats_24h || []).length;
+        $('m-quarantine').textContent = data.quarantine_count;
+        $('m-guardian').textContent = (data.guardian_actions_recent || []).length;
+
+        const st = $('sess-tbody'); clear(st);
+        if (!(data.sessions_sample || []).length) st.appendChild(colspanRow('No active sessions', 7));
+        else data.sessions_sample.forEach(s => {
+            st.appendChild(row([s.agent_id, s.agent_class, s.state, s.risk_score, s.issued_at, s.expires_at, s.last_activity]));
+        });
+
+        const tt = $('threat-tbody'); clear(tt);
+        if (!(data.recent_threats_24h || []).length) tt.appendChild(colspanRow('No threats in last 24h', 5));
+        else data.recent_threats_24h.forEach(t => {
+            tt.appendChild(row([pill(t.severity), t.type, t.agent_id || '—', t.recommended_action || '—', t.timestamp]));
+        });
+
+        const qt = $('qm-tbody'); clear(qt);
+        if (!(data.quarantine_sample || []).length) qt.appendChild(colspanRow('No quarantined writes', 5));
+        else data.quarantine_sample.forEach(q => {
+            const code = document.createElement('code');
+            code.textContent = (q.write_id || '').slice(0, 12) + '…';
+            qt.appendChild(row([code, q.agent_id || '—', (q.semantic_score + q.fact_score + q.provenance_score + q.anomaly_score).toFixed(2), '—', q.timestamp]));
+        });
+
+        const gt = $('guard-tbody'); clear(gt);
+        if (!(data.guardian_actions_recent || []).length) gt.appendChild(colspanRow('No guardian activity', 6));
+        else data.guardian_actions_recent.forEach(a => {
+            gt.appendChild(row([a.agent_id, a.action, a.autonomy_level, a.reason, a.notify_latency_sec, a.timestamp]));
+        });
+
+        $('last-updated').textContent = 'Last updated: ' + new Date().toLocaleString();
+    } catch (e) { console.error(e); }
+}
+
+refresh();
+setInterval(refresh, REFRESH_MS);
+
+const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/security/ws');
+ws.onmessage = () => refresh();
+ws.onclose = () => setTimeout(() => location.reload(), 5000);
+</script>
+</body>
+</html>
