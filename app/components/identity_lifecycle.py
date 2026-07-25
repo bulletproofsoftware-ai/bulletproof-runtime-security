@@ -28,6 +28,29 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def _is_expired(row: Any) -> bool:
+    """True when the session's expires_at is in the past.
+
+    The background _expiry_worker only sweeps once a minute, so callers that
+    gate access must check expiry themselves rather than assume the sweep has
+    already run. Unparseable or missing expires_at is treated as expired —
+    fail closed.
+    """
+    try:
+        raw = row["expires_at"]
+    except (KeyError, IndexError, TypeError):
+        return True
+    if not raw:
+        return True
+    try:
+        expires = datetime.fromisoformat(str(raw))
+    except ValueError:
+        return True
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    return expires <= _now()
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -48,7 +71,11 @@ def provision_session(
     ttl = ttl_hours or Config.CREDENTIAL_TTL_HOURS_DEFAULT
     issued = _now()
     expires = issued + timedelta(hours=ttl)
-    scope = scope or {"tools": ["*"], "data_classification": "internal"}
+    # `scope or default` would replace an explicitly-passed empty scope ({})
+    # with the wildcard default, silently granting every tool to a caller that
+    # asked for none. Only substitute the default when no scope was supplied.
+    if scope is None:
+        scope = {"tools": ["*"], "data_classification": "internal"}
 
     payload = {
         "iss": Config.JWT_ISSUER,
@@ -105,6 +132,37 @@ def transition_state(session_id: str, new_state: str, reason: str = "") -> bool:
         if not row:
             return False
         prev = row["state"]
+
+        # REVOKE is terminal. Without this, any caller could walk a revoked
+        # session back to AUTHORIZE, because membership in VALID_STATES was
+        # the only constraint on a transition.
+        if prev == "REVOKE" and new_state != "REVOKE":
+            emit(
+                "identity.state.transition_denied",
+                severity="critical",
+                agent_id=row["agent_id"],
+                session_id=session_id,
+                payload={"from": prev, "to": new_state, "reason": "REVOKE is terminal"},
+            )
+            return False
+
+        # A suspended session may only be revoked outright or explicitly
+        # reinstated via AUTHENTICATE; it must not jump straight back to
+        # AUTHORIZE.
+        if prev == "SUSPEND" and new_state == "AUTHORIZE":
+            emit(
+                "identity.state.transition_denied",
+                severity="critical",
+                agent_id=row["agent_id"],
+                session_id=session_id,
+                payload={
+                    "from": prev,
+                    "to": new_state,
+                    "reason": "suspended sessions must re-authenticate",
+                },
+            )
+            return False
+
         conn.execute(
             "UPDATE sessions SET state = ?, last_activity = ? WHERE session_id = ?",
             (new_state, _now().isoformat(), session_id),
@@ -125,10 +183,34 @@ def revoke(session_id: str, reason: str = "") -> bool:
 
 
 def rotate(session_id: str, ttl_hours: int | None = None) -> dict[str, Any] | None:
-    """Issue new credential with same scope, revoke old within 60s — REQ-SEC-004."""
+    """Issue new credential with same scope, revoke old within 60s — REQ-SEC-004.
+
+    Only a live session may be rotated. Rotating a revoked, suspended or
+    expired session would mint a brand-new AUTHORIZE credential from a
+    session_id that is no longer trusted, turning revocation into a
+    speed bump rather than a control.
+    """
     with closing(connect()) as conn:
         row = conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
     if not row:
+        return None
+    if row["state"] in ("REVOKE", "SUSPEND"):
+        emit(
+            "identity.rotation.denied",
+            severity="critical",
+            agent_id=row["agent_id"],
+            session_id=session_id,
+            payload={"state": row["state"], "reason": "cannot rotate a revoked or suspended session"},
+        )
+        return None
+    if _is_expired(row):
+        emit(
+            "identity.rotation.denied",
+            severity="critical",
+            agent_id=row["agent_id"],
+            session_id=session_id,
+            payload={"expires_at": row["expires_at"], "reason": "cannot rotate an expired session"},
+        )
         return None
     new_session = provision_session(
         agent_id=row["agent_id"],
@@ -175,6 +257,18 @@ def check_scope(session_id: str, required_tool: str, required_data_class: str = 
         return False, "session not found"
     if row["state"] in ("REVOKE", "SUSPEND"):
         return False, f"session state {row['state']}"
+    # Expiry must be enforced here, not left to the 60-second _expiry_worker
+    # sweep: between a session expiring and the next poll, this gate would
+    # otherwise keep authorizing it.
+    if _is_expired(row):
+        emit(
+            "identity.scope.violation",
+            severity="critical",
+            agent_id=row["agent_id"],
+            session_id=session_id,
+            payload={"reason": "session expired", "expires_at": row["expires_at"]},
+        )
+        return False, "session expired"
     scope = json.loads(row["scope_json"])
     allowed_tools = set(scope.get("tools", []))
     if "*" not in allowed_tools and required_tool not in allowed_tools:
