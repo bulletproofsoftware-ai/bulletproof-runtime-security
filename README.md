@@ -64,8 +64,9 @@ python -m pytest
 ## Media
 
 A NotebookLM-generated overview lives in [`media/`](media/): a narrated
-[explainer video](media/system-overview.mp4) and a
-[briefing document](media/system-overview.md). The overview infographic is
+[explainer video](media/system-overview.mp4), a
+[briefing document](media/system-overview.md), and a
+[slide deck](media/bulletproof-runtime-security-deck.pdf). The overview infographic is
 [`docs/media/infographic.png`](docs/media/infographic.png) (shown above).
 
 ## License
