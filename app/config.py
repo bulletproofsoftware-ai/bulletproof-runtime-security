@@ -10,8 +10,8 @@ class Config:
     # Storage
     QDRANT_URL = os.environ.get("QDRANT_URL", "http://host.docker.internal:6334")
     QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
-    SQLITE_PATH = Path(os.environ.get("SQLITE_PATH", "/security/runtime_security.sqlite"))
-    AUDIT_DB_PATH = Path(os.environ.get("AUDIT_DB_PATH", "/security/audit_bus.sqlite"))
+    SQLITE_PATH = Path(os.environ.get("SQLITE_PATH", "./data/runtime_security.sqlite"))
+    AUDIT_DB_PATH = Path(os.environ.get("AUDIT_DB_PATH", "./data/audit_bus.sqlite"))
 
     # Behavioral baselines (REQ-SEC-001/002)
     BASELINE_MIN_SESSIONS = int(os.environ.get("BASELINE_MIN_SESSIONS", "10"))

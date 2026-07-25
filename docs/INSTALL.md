@@ -16,8 +16,12 @@ with just a JWT secret set.
 ```bash
 pip install -r requirements.txt
 cp .env.example .env       # then edit .env (see below)
-uvicorn app.main:app --host 0.0.0.0 --port 8093
+uvicorn app.main:app --env-file .env --host 0.0.0.0 --port 8093
 ```
+
+> The app does not load `.env` by itself — pass it with uvicorn's
+> `--env-file .env` (or export the variables in your shell) so the values in
+> your `.env` actually take effect.
 
 Open the dashboard at <http://localhost:8093/> and the health probe at
 <http://localhost:8093/health>.
@@ -71,14 +75,13 @@ curl -s http://localhost:8093/health
 ## Development
 
 ```bash
-pip install -r requirements.txt
-python -m pytest        # see note below
+pip install -r requirements.txt pytest
+python -m pytest
 ```
 
-> **Note:** the repository ships the service and a CI workflow
-> (`.github/workflows/ci.yml`) that compiles all Python and runs `pytest` if a
-> test suite is present. No unit tests are bundled in this public release, so
-> `pytest` currently reports "no tests ran". Contributions of tests are welcome.
+> The bundled suite is a smoke test (`tests/test_smoke.py`): config import,
+> app boot against temporary SQLite paths, and the `/health` probe.
+> Contributions of deeper tests are welcome.
 
 ---
 

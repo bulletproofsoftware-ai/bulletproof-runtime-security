@@ -27,7 +27,7 @@ agent that can act at an advisory, semi-autonomous, or fully-autonomous level.
 ```bash
 pip install -r requirements.txt
 cp .env.example .env       # set RUNTIME_SECURITY_JWT_SECRET + OUTBOUND_HOST_ALLOWLIST
-uvicorn app.main:app --host 0.0.0.0 --port 8093
+uvicorn app.main:app --env-file .env --host 0.0.0.0 --port 8093
 ```
 
 Or via Docker (`Dockerfile` included). A dashboard is served at `/`.
