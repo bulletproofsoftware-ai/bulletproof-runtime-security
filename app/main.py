@@ -7,7 +7,9 @@ Coordination Scorer, Threat Detection, Guardian Agent.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
+import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -155,6 +157,42 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Runtime Security & Identity", version="1.0.0", lifespan=lifespan)
+
+
+# --- Authentication -------------------------------------------------------
+#
+# Every route below was reachable unauthenticated. This API provisions,
+# rotates and revokes the agent credentials this service exists to govern, so
+# an anonymous caller could mint itself a session with any scope — defeating
+# the control entirely.
+#
+# Send the token as `Authorization: Bearer <token>` or `X-Security-Token`.
+# Unset token => the service refuses everything (fail closed).
+SECURITY_ADMIN_TOKEN = os.environ.get("RUNTIME_SECURITY_ADMIN_TOKEN", "")
+_PUBLIC_PATHS = {"/health", "/healthz", "/readyz", "/metrics"}
+
+
+def _admin_token_ok(presented: str) -> bool:
+    return bool(presented) and hmac.compare_digest(presented, SECURITY_ADMIN_TOKEN)
+
+
+@app.middleware("http")
+async def require_admin_token(request: Request, call_next):
+    path = request.url.path
+    if path in _PUBLIC_PATHS or path.startswith("/static/"):
+        return await call_next(request)
+    if not SECURITY_ADMIN_TOKEN:
+        return JSONResponse(
+            {"detail": "RUNTIME_SECURITY_ADMIN_TOKEN is not set; the service refuses requests until it is configured."},
+            status_code=503,
+        )
+    header = request.headers.get("authorization", "")
+    presented = (
+        header[7:] if header.lower().startswith("bearer ") else ""
+    ) or request.headers.get("x-security-token", "")
+    if not _admin_token_ok(presented):
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 STATIC_DIR = Path(__file__).parent / "static"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -393,6 +431,20 @@ async def compliance_reports():
 
 @app.websocket("/api/security/ws")
 async def ws_endpoint(ws: WebSocket):
+    # HTTP middleware does not run for websocket handshakes, so the token is
+    # checked here. This stream carries live security telemetry.
+    if not SECURITY_ADMIN_TOKEN:
+        await ws.close(code=1011, reason="RUNTIME_SECURITY_ADMIN_TOKEN not configured")
+        return
+    presented = (
+        ws.headers.get("x-security-token")
+        or (ws.headers.get("authorization", "")[7:]
+            if ws.headers.get("authorization", "").lower().startswith("bearer ") else "")
+        or ws.query_params.get("token", "")
+    )
+    if not _admin_token_ok(presented):
+        await ws.close(code=1008, reason="Unauthorized")
+        return
     await ws.accept()
     _ws_clients.add(ws)
     try:

@@ -35,11 +35,26 @@ def test_app_boots_and_health_answers():
         assert body.get("status") in ("ok", "healthy")
 
 
-def test_dashboard_root_renders():
+def test_dashboard_root_requires_a_token():
+    """The dashboard is behind the admin-token gate like every other route."""
     from fastapi.testclient import TestClient
 
     from app.main import app
 
     with TestClient(app) as client:
-        resp = client.get("/")
+        assert client.get("/").status_code in (401, 503)
+
+
+def test_dashboard_root_renders_with_token():
+    import os
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    token = os.environ.get("RUNTIME_SECURITY_ADMIN_TOKEN", "")
+    if not token:
+        pytest.skip("RUNTIME_SECURITY_ADMIN_TOKEN not set")
+    with TestClient(app) as client:
+        resp = client.get("/", headers={"X-Security-Token": token})
         assert resp.status_code == 200
