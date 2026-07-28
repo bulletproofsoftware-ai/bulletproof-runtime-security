@@ -147,7 +147,7 @@ The service utilizes 37 resolved runtime components under permissive licenses.
 
 | Package | Version | License |
 | :--- | :--- | :--- |
-| fastapi | 0.115.6 | MIT |
+| fastapi | 0.140.7 | MIT |
 | uvicorn[standard] | 0.34.0 | BSD-3-Clause |
 | httpx | 0.28.1 | BSD-3-Clause |
 | pyyaml | 6.0.2 | MIT |
